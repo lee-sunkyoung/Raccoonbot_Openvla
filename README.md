@@ -13,7 +13,7 @@
 
 ## 과제1 : 데이터 증강
   
-  변경 폴더
+  주요 변경 폴더
   `Raccoonbot_Openvla1/Mujoco/Raccoon_colored_cylinder.xml`
   `Raccoonbot_Openvla1/Mujoco/raccoon_grasp_multicolor_scene_dataset.py`
 
@@ -35,17 +35,19 @@
 
 
 
-## 과제2 : 코드 개선
+## 과제2 : 코드 개선 및 실제 로봇 동작
 
-  변경 폴더
-  `openvla_multicolor_client_real_robot.py.xml`
+  주요 변경 폴더
+  `openvla_multicolor_client_real_robot.py`
+  `finetune.py / finetune2.py`
   `/client/batch_rollout.sh`
 
+  ### 7D -> 4DOF
+  - 이미 raccoon_env에서 실제 사용시 4dof 만 사용하도록 되어있음 (roll/pitch/yaw는 무시)
 
   ### 로봇 속도 개선
-  - 실물 로봇 동작 속도 개선 (동일seed 수행시간 비교결과 : 기존 5min46s->변경2min5s)
+  - 실물 로봇 동작 속도 - 이미지 포맷 및 settle 타임 변경 (동일seed 수행시간 비교결과 : 기존 5min46s->변경2min5s)
   - 명령어 및 예시 결과
-
 ```
   python openvla_multicolor_client_real_robot.py   --server_url http://127.0.0.1:8001   --target_color green   --seed 42   --image_quality 30   --no_save_frames   --use_real_robot   --use_viewer
 [CLEANUP] removed 0 existing image files from rollout_outputs/episode_000001
@@ -60,11 +62,10 @@ Raccoon[0] Connected: /dev/ttyACM0 D5:BF:DA:6B:6F:D6
 [INFER] server request time: 0.328s | image_quality=30
 ```
 
-
   ### 로그 / 시각화
 
   - client 내부에서 추론 결과 확인시 한번에 여러번 테스트 가능한 쉘 코드 추가
-
+  - 기타 여러 폴더 내 디버깅용 로그 추가
   - 예시 결과
 
 ```
