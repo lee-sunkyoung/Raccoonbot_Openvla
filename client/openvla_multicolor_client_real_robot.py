@@ -33,17 +33,10 @@ CYLINDER_BODY_BY_COLOR = {
 }
 CYLINDER_COLORS = tuple(CYLINDER_BODY_BY_COLOR.keys())
 
-BOX_BODY_NAME = "target_box"
-
 DEFAULT_OBJECT_X_RANGE = (-0.10, 0.10)
 DEFAULT_OBJECT_Y_RANGE = (0.16, 0.25)
 DEFAULT_MIN_OBJECT_DISTANCE = 0.035
 DEFAULT_YAW_RANGE = (-math.pi / 4, math.pi / 4)
-DEFAULT_TASK_TYPE = "grasp"
-DEFAULT_TARGET_KIND = "cylinder"
-DEFAULT_BOX_XY = (0.00, 0.205)
-DEFAULT_BOX_YAW = 0.0
-DEFAULT_BOX_YAW_RANGE = (-0.20, 0.20)
 DEFAULT_INSTRUCTION_TEMPLATE = "grasp the {color} cylinder"
 
 
@@ -357,87 +350,12 @@ def infer_color_from_instruction(instruction: Optional[str]) -> Optional[str]:
     return matches[0] if matches else None
 
 
-def build_instruction(
-    rng: np.random.Generator,
-    task_type: str,
-    target_kind: str = "cylinder",
-    target_color: Optional[str] = None,
-) -> str:
-    task_type = task_type.lower().strip()
-    target_kind = target_kind.lower().strip()
-    if target_kind not in {"cylinder", "box"}:
-        raise ValueError(f"Unsupported target_kind: {target_kind}")
-
-    if task_type == "grasp":
-        verbs = ["grasp", "pick up", "grab", "catch", "take"]
-        prefixes = ["please", "can you", "carefully", "gently", ""]
-        if target_kind == "box":
-            nouns = ["box", "cube", "block", "object", "target box"]
-            templates = [
-                "{prefix} {verb} the {noun}",
-                "{prefix} {verb} the {noun} up",
-                "{prefix} {verb} the {noun} for me",
-            ]
-            return rng.choice(templates).format(
-                prefix=rng.choice(prefixes).strip(),
-                verb=rng.choice(verbs),
-                noun=rng.choice(nouns),
-            ).strip()
-
-        nouns = ["cylinder", "object", "item", "target"]
-        templates = [
-            "{prefix} {verb} the {color} {noun}",
-            "{prefix} {verb} the {color} {noun} up",
-            "{prefix} {verb} the {color} {noun} for me",
-        ]
-        return rng.choice(templates).format(
-            prefix=rng.choice(prefixes).strip(),
-            verb=rng.choice(verbs),
-            color=target_color,
-            noun=rng.choice(nouns),
-        ).strip()
-
-    if task_type == "push":
-        verbs = ["push", "slide", "move"]
-        prefixes = ["please", "carefully", "gently", ""]
-        goals = ["goal", "target spot", "destination", "marked point", "final position"]
-        nouns = ["box", "cube", "block", "object", "target box"] if target_kind == "box" else ["cylinder", "object", "item", "target cylinder"]
-        templates = [
-            "{prefix} {verb} the {noun} to the {goal}",
-            "{prefix} {verb} the {noun} toward the {goal}",
-            "{prefix} move the {noun} to the {goal}",
-        ]
-        return rng.choice(templates).format(
-            prefix=rng.choice(prefixes).strip(),
-            verb=rng.choice(verbs),
-            noun=rng.choice(nouns),
-            goal=rng.choice(goals),
-        ).strip()
-
-    raise ValueError(f"Unsupported task_type: {task_type}")
-
-
 def resolve_target_color_and_instruction(
     instruction: Optional[str],
     target_color_arg: str,
     rng: np.random.Generator,
-    task_type: str,
-    target_kind: str,
-    instruction_template: str = DEFAULT_INSTRUCTION_TEMPLATE,
-) -> Tuple[Optional[str], str]:
-    task_type = task_type.lower().strip()
-    target_kind = target_kind.lower().strip()
-
-    if target_kind == "box":
-        if instruction is None or instruction.strip() == "":
-            instruction = build_instruction(
-                rng=rng,
-                task_type=task_type,
-                target_kind=target_kind,
-                target_color=None,
-            )
-        return None, instruction
-
+    instruction_template: str,
+) -> Tuple[str, str]:
     instruction_color = infer_color_from_instruction(instruction)
 
     if instruction_color is not None:
@@ -455,15 +373,7 @@ def resolve_target_color_and_instruction(
         raise ValueError(f"지원하지 않는 --target_color 값입니다: {target_color_arg}")
 
     if instruction is None or instruction.strip() == "":
-        if task_type == "grasp" and target_kind == "cylinder" and "{color}" in instruction_template:
-            instruction = instruction_template.format(color=target_color)
-        else:
-            instruction = build_instruction(
-                rng=rng,
-                task_type=task_type,
-                target_kind=target_kind,
-                target_color=target_color,
-            )
+        instruction = instruction_template.format(color=target_color)
 
     return target_color, instruction
 
@@ -527,23 +437,6 @@ def sample_object_specs(
     return {color: specs[color] for color in CYLINDER_COLORS}
 
 
-def sample_box_spec(
-    rng: np.random.Generator,
-    x_range: Tuple[float, float],
-    y_range: Tuple[float, float],
-    yaw_range: Tuple[float, float],
-) -> Dict[str, float]:
-    if x_range[0] >= x_range[1] or y_range[0] >= y_range[1] or yaw_range[0] > yaw_range[1]:
-        raise ValueError(f"잘못된 box spawn range입니다: x_range={x_range}, y_range={y_range}, yaw_range={yaw_range}")
-
-    return {
-        "body_name": BOX_BODY_NAME,
-        "x": float(rng.uniform(x_range[0], x_range[1])),
-        "y": float(rng.uniform(y_range[0], y_range[1])),
-        "yaw": float(rng.uniform(yaw_range[0], yaw_range[1])),
-    }
-
-
 def reset_freejoint_body_pose(env: SyncSimRaccoonEnv, body_name: str, x: float, y: float, z: float, yaw: float) -> None:
     if not hasattr(env, "model") or not hasattr(env, "data"):
         raise AttributeError("SyncSimRaccoonEnv에 model/data 속성이 필요합니다.")
@@ -598,29 +491,6 @@ def reset_multicolor_scene(
     mujoco.mj_forward(env.model, env.data)
 
 
-def reset_box_scene(
-    env: SyncSimRaccoonEnv,
-    box_spec: Dict[str, float],
-) -> None:
-    env.reset_episode(float(box_spec["x"]), float(box_spec["y"]), float(box_spec["yaw"]))
-
-    reset_freejoint_body_pose(
-        env=env,
-        body_name=str(box_spec["body_name"]),
-        x=float(box_spec["x"]),
-        y=float(box_spec["y"]),
-        z=0.02,
-        yaw=float(box_spec["yaw"]),
-    )
-
-    if hasattr(env, "active_object_body_name"):
-        env.active_object_body_name = str(box_spec["body_name"])
-    if hasattr(env, "target_body_name"):
-        env.target_body_name = str(box_spec["body_name"])
-
-    mujoco.mj_forward(env.model, env.data)
-
-
 def object_specs_to_meta(object_specs: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, Any]]:
     return {
         color: {
@@ -635,34 +505,15 @@ def object_specs_to_meta(object_specs: Dict[str, Dict[str, float]]) -> Dict[str,
 def write_rollout_meta(
     out_dir: Path,
     instruction: str,
-    task_type: str,
-    target_kind: str,
-    target_color: Optional[str],
-    object_specs: Optional[Dict[str, Dict[str, float]]],
-    box_spec: Optional[Dict[str, float]],
+    target_color: str,
+    object_specs: Dict[str, Dict[str, float]],
     args: Dict[str, Any],
 ) -> None:
-    if target_kind == "box":
-        target_body_name = BOX_BODY_NAME
-    elif target_color is not None:
-        target_body_name = CYLINDER_BODY_BY_COLOR[target_color]
-    else:
-        raise ValueError("target_kind이 cylinder일 때 target_color가 필요합니다.")
-
     meta = {
         "instruction": instruction,
-        "task_type": task_type,
-        "target_kind": target_kind,
         "target_color": target_color,
-        "target_body_name": target_body_name,
-        "all_object_init_poses": object_specs_to_meta(object_specs) if object_specs is not None else None,
-        "box_init_pose": {
-            "body_name": str(box_spec["body_name"]),
-            "xy": [float(box_spec["x"]), float(box_spec["y"])],
-            "yaw": float(box_spec["yaw"]),
-        }
-        if box_spec is not None
-        else None,
+        "target_body_name": CYLINDER_BODY_BY_COLOR[target_color],
+        "all_object_init_poses": object_specs_to_meta(object_specs),
         "args": args,
     }
     with open(out_dir / "rollout_meta.json", "w", encoding="utf-8") as f:
@@ -698,16 +549,11 @@ def rollout(
     randomize_objects: bool = True,
     request_timeout: float = 60.0,
     max_delta_xyz: float = 0.005,
-    task_type: str = DEFAULT_TASK_TYPE,
-    target_kind: str = DEFAULT_TARGET_KIND,
     target_color_arg: str = "auto",
     instruction_template: str = DEFAULT_INSTRUCTION_TEMPLATE,
     seed: Optional[int] = None,
     object_x_range: Tuple[float, float] = DEFAULT_OBJECT_X_RANGE,
     object_y_range: Tuple[float, float] = DEFAULT_OBJECT_Y_RANGE,
-    box_x_range: Tuple[float, float] = DEFAULT_OBJECT_X_RANGE,
-    box_y_range: Tuple[float, float] = DEFAULT_OBJECT_Y_RANGE,
-    box_yaw_range: Tuple[float, float] = DEFAULT_BOX_YAW_RANGE,
     min_object_distance: float = DEFAULT_MIN_OBJECT_DISTANCE,
     use_real_robot: bool = False,
     allow_sim_only_on_hw_fail: bool = False,
@@ -716,7 +562,6 @@ def rollout(
     real_go_home_on_exit: bool = False,
     image_quality: int = 50,
     save_frames: bool = True,
-    save_frame_every_n_steps: int = 1,
 ) -> None:
     out_dir = Path(output_dir) / f"episode_{episode_id:06d}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -727,38 +572,18 @@ def rollout(
         instruction=instruction,
         target_color_arg=target_color_arg,
         rng=rng,
-        task_type=task_type,
-        target_kind=target_kind,
         instruction_template=instruction_template,
     )
 
-    object_specs: Optional[Dict[str, Dict[str, float]]] = None
-    box_spec: Optional[Dict[str, float]] = None
-    if target_kind == "box":
-        if randomize_objects:
-            box_spec = sample_box_spec(
-                rng=rng,
-                x_range=box_x_range,
-                y_range=box_y_range,
-                yaw_range=box_yaw_range,
-            )
-        else:
-            box_spec = {
-                "body_name": BOX_BODY_NAME,
-                "x": float(DEFAULT_BOX_XY[0]),
-                "y": float(DEFAULT_BOX_XY[1]),
-                "yaw": float(DEFAULT_BOX_YAW),
-            }
+    if randomize_objects:
+        object_specs = sample_object_specs(
+            rng=rng,
+            x_range=object_x_range,
+            y_range=object_y_range,
+            min_distance=min_object_distance,
+        )
     else:
-        if randomize_objects:
-            object_specs = sample_object_specs(
-                rng=rng,
-                x_range=object_x_range,
-                y_range=object_y_range,
-                min_distance=min_object_distance,
-            )
-        else:
-            object_specs = make_default_object_specs()
+        object_specs = make_default_object_specs()
 
     env = SyncSimRaccoonEnv(
         xml_path=xml_path,
@@ -769,21 +594,11 @@ def rollout(
     real_robot: Optional[RealRaccoonController] = None
 
     try:
-        if target_kind == "box":
-            if box_spec is None:
-                raise RuntimeError("box_spec이 초기화되지 않았습니다.")
-            reset_box_scene(
-                env=env,
-                box_spec=box_spec,
-            )
-        else:
-            if object_specs is None or target_color is None:
-                raise RuntimeError("cylinder 설정(object_specs/target_color)이 초기화되지 않았습니다.")
-            reset_multicolor_scene(
-                env=env,
-                object_specs=object_specs,
-                target_color=target_color,
-            )
+        reset_multicolor_scene(
+            env=env,
+            object_specs=object_specs,
+            target_color=target_color,
+        )
 
         env.lockh()
         if use_real_robot:
@@ -800,16 +615,11 @@ def rollout(
         write_rollout_meta(
             out_dir=out_dir,
             instruction=instruction,
-            task_type=task_type,
-            target_kind=target_kind,
             target_color=target_color,
             object_specs=object_specs,
-            box_spec=box_spec,
             args={
                 "xml_path": xml_path,
                 "unnorm_key": unnorm_key,
-                "task_type": task_type,
-                "target_kind": target_kind,
                 "camera_name": camera_name,
                 "speed": speed,
                 "settle_seconds_per_action": settle_seconds_per_action,
@@ -819,9 +629,6 @@ def rollout(
                 "seed": seed,
                 "object_x_range": list(object_x_range),
                 "object_y_range": list(object_y_range),
-                "box_x_range": list(box_x_range),
-                "box_y_range": list(box_y_range),
-                "box_yaw_range": list(box_yaw_range),
                 "min_object_distance": min_object_distance,
                 "use_real_robot": use_real_robot,
                 "allow_sim_only_on_hw_fail": allow_sim_only_on_hw_fail,
@@ -830,24 +637,14 @@ def rollout(
                 "real_go_home_on_exit": real_go_home_on_exit,
                 "image_quality": image_quality,
                 "save_frames": save_frames,
-                "save_frame_every_n_steps": save_frame_every_n_steps,
             },
         )
 
-        if target_kind == "box":
-            assert box_spec is not None
-            print(
-                f"[SCENE] instruction={instruction!r} | task_type={task_type!r} | target_kind='box' | "
-                f"box_xy=({box_spec['x']:.3f}, {box_spec['y']:.3f}) | box_yaw={box_spec['yaw']:.3f}"
-            )
-        else:
-            assert object_specs is not None and target_color is not None
-            print(
-                f"[SCENE] instruction={instruction!r} | task_type={task_type!r} | target_kind='cylinder' | "
-                f"target_color={target_color!r} | "
-                f"target_xy=({object_specs[target_color]['x']:.3f}, {object_specs[target_color]['y']:.3f}) | "
-                f"objects={object_specs_to_meta(object_specs)}"
-            )
+        print(
+            f"[SCENE] instruction={instruction!r} | target_color={target_color!r} | "
+            f"target_xy=({object_specs[target_color]['x']:.3f}, {object_specs[target_color]['y']:.3f}) | "
+            f"objects={object_specs_to_meta(object_specs)}"
+        )
 
         obs = env.get_observation()
         step_idx = 0
@@ -882,7 +679,7 @@ def rollout(
                 env.settle_steps(seconds=settle_seconds_per_action)
                 obs = env.get_observation()
 
-                if save_frames and step_idx % max(1, int(save_frame_every_n_steps)) == 0:
+                if save_frames:
                     frame_name = f"frame_{step_idx:06d}.png"
                     Image.fromarray(obs["image"]).save(out_dir / frame_name)
 
@@ -890,7 +687,7 @@ def rollout(
                 print_fail_log(step_idx, exc)
                 obs = env.get_observation()
 
-                if save_frames and step_idx % max(1, int(save_frame_every_n_steps)) == 0:
+                if save_frames:
                     frame_name = f"frame_{step_idx:06d}_skipped.png"
                     Image.fromarray(obs["image"]).save(out_dir / frame_name)
 
@@ -924,16 +721,14 @@ def parse_args() -> argparse.Namespace:
         "--instruction",
         type=str,
         default=None,
-        help="OpenVLA prompt. If omitted, generated from --task_type/--target_kind.",
+        help="OpenVLA prompt. If omitted, generated as 'grasp the {color} cylinder'.",
     )
-    parser.add_argument("--task_type", type=str, default=DEFAULT_TASK_TYPE, choices=["grasp", "push"])
-    parser.add_argument("--target_kind", type=str, default=DEFAULT_TARGET_KIND, choices=["cylinder", "box"])
     parser.add_argument(
         "--target_color",
         type=str,
         default="auto",
         choices=["auto", "random", *CYLINDER_COLORS],
-        help="Target color for cylinder mode. box mode ignores this option.",
+        help="Target color. 'auto' uses the color in --instruction, or random if instruction has no color.",
     )
     parser.add_argument("--instruction_template", type=str, default=DEFAULT_INSTRUCTION_TEMPLATE)
     parser.add_argument("--unnorm_key", type=str, default="raccoon_pick_place")
@@ -951,14 +746,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--object_x_range", type=float, nargs=2, default=DEFAULT_OBJECT_X_RANGE)
     parser.add_argument("--object_y_range", type=float, nargs=2, default=DEFAULT_OBJECT_Y_RANGE)
-    parser.add_argument("--box_x_range", type=float, nargs=2, default=DEFAULT_OBJECT_X_RANGE)
-    parser.add_argument("--box_y_range", type=float, nargs=2, default=DEFAULT_OBJECT_Y_RANGE)
-    parser.add_argument("--box_yaw_range", type=float, nargs=2, default=DEFAULT_BOX_YAW_RANGE)
     parser.add_argument("--min_object_distance", type=float, default=DEFAULT_MIN_OBJECT_DISTANCE)
 
     parser.add_argument("--image_quality", type=int, default=50)
     parser.add_argument("--no_save_frames", action="store_true")
-    parser.add_argument("--save_frame_every_n_steps", type=int, default=1, help="Save one frame every N steps to reduce disk I/O")
 
     parser.add_argument("--use_real_robot", action="store_true", help="서버 action을 실제 라쿤봇 하드웨어에도 전송합니다.")
     parser.add_argument(
@@ -1027,16 +818,11 @@ def main() -> None:
             randomize_objects=not (args.no_randomize_box or args.no_randomize_objects),
             request_timeout=args.request_timeout,
             max_delta_xyz=args.max_delta_xyz,
-            task_type=args.task_type,
-            target_kind=args.target_kind,
             target_color_arg=args.target_color,
             instruction_template=args.instruction_template,
             seed=args.seed,
             object_x_range=tuple(args.object_x_range),
             object_y_range=tuple(args.object_y_range),
-            box_x_range=tuple(args.box_x_range),
-            box_y_range=tuple(args.box_y_range),
-            box_yaw_range=tuple(args.box_yaw_range),
             min_object_distance=args.min_object_distance,
             use_real_robot=args.use_real_robot,
             allow_sim_only_on_hw_fail=args.allow_sim_only_on_hw_fail,
@@ -1045,7 +831,6 @@ def main() -> None:
             real_go_home_on_exit=args.real_go_home_on_exit,
             image_quality=args.image_quality,
             save_frames=not args.no_save_frames,
-            save_frame_every_n_steps=max(1, int(args.save_frame_every_n_steps)),
         )
 
 

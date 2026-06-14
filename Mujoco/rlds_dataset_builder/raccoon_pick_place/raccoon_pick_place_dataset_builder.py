@@ -7,15 +7,16 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 
 
-INTERMEDIATE_ROOT = Path("/data/Raccoonbot_Openvla/Mujoco/raccoon_dataset/openvla_rlds_intermediate")
+INTERMEDIATE_ROOT = Path("/data/lsk/Raccoonbot_Openvla/Mujoco/raccoon_dataset/openvla_rlds_intermediate_combined")
 
 
 class RaccoonPickPlace(tfds.core.GeneratorBasedBuilder):
     """TFDS/RLDS builder for Raccoon pick-and-place dataset."""
 
-    VERSION = tfds.core.Version("1.0.0")
+    VERSION = tfds.core.Version("1.1.0")
     RELEASE_NOTES = {
         "1.0.0": "Initial release for single-task Raccoon grasp dataset.",
+        "1.1.0": "Adds push episodes and task metadata fields.",
     }
 
     MANUAL_DOWNLOAD_INSTRUCTIONS = """
@@ -104,6 +105,15 @@ class RaccoonPickPlace(tfds.core.GeneratorBasedBuilder):
                     "goal_xy": tfds.features.Tensor(shape=(2,), dtype=np.float32),
                     "box_init_xy": tfds.features.Tensor(shape=(2,), dtype=np.float32),
                     "box_init_yaw": tfds.features.Scalar(dtype=np.float32),
+                    "task_type": tfds.features.Text(
+                        doc="Episode task type, e.g. grasp or push.",
+                    ),
+                    "target_color": tfds.features.Text(
+                        doc="Target cylinder color for grasp episodes; empty for push.",
+                    ),
+                    "target_body_name": tfds.features.Text(
+                        doc="MuJoCo body name for the primary target object.",
+                    ),
                     "source_path": tfds.features.Text(
                         doc="Path to the source episode directory.",
                     ),
@@ -249,6 +259,9 @@ class RaccoonPickPlace(tfds.core.GeneratorBasedBuilder):
                     episode_metadata.get("box_init_xy", [0.0, 0.0]), expected_dim=2
                 ),
                 "box_init_yaw": np.float32(episode_metadata.get("box_init_yaw", 0.0)),
+                "task_type": str(episode_metadata.get("task_type", "grasp")),
+                "target_color": str(episode_metadata.get("target_color", "")),
+                "target_body_name": str(episode_metadata.get("target_body_name", "")),
                 "source_path": str(episode_dir),
             },
         }
@@ -265,6 +278,9 @@ class RaccoonPickPlace(tfds.core.GeneratorBasedBuilder):
 
         instruction = str(meta.get("instruction", ""))
         success = bool(meta.get("success", False))
+        task_type = str(meta.get("task_type", "grasp"))
+        target_color = str(meta.get("target_color", ""))
+        target_body_name = str(meta.get("target_body_name", ""))
 
         steps = []
         for i in range(len(raw_steps)):
@@ -302,6 +318,9 @@ class RaccoonPickPlace(tfds.core.GeneratorBasedBuilder):
                 "goal_xy": self._ensure_float32_vector(meta.get("goal_xy", [0.0, 0.0]), expected_dim=2),
                 "box_init_xy": self._ensure_float32_vector(meta.get("box_init_xy", [0.0, 0.0]), expected_dim=2),
                 "box_init_yaw": np.float32(meta.get("box_init_yaw", 0.0)),
+                "task_type": task_type,
+                "target_color": target_color,
+                "target_body_name": target_body_name,
                 "source_path": str(episode_dir),
             },
         }

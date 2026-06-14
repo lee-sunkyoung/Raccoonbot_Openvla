@@ -1,3 +1,120 @@
+# PhysicalAI Project
+
+라쿤봇 OpenVLA에 새로운 오브젝트 타입(box), push task를 추가하고, 언어 지시문을 확장하였습니다. 
+또한 추론 시 4dof로 모션 속도를 빠르게 움직이도록 수정하고 로그를 추가하였습니다.
+
+
+## 레포지토리 구성
+
+`/client` 폴더 : local 환경 내부에서 실행되는 코드
+`/demo_videos` 폴더: make_video.py`로 에피소드를 저장한 시뮬레이션, 실제 영상 등 시각자료 폴더
+`/Project Report.md` 
+`/기타 폴더들은 fork 이후 변경점들을 추가하거나 변경하였습니다.`
+
+## 과제1 : 데이터 증강
+  
+  변경 폴더
+  `Raccoonbot_Openvla1/Mujoco/Raccoon_colored_cylinder.xml`
+  `Raccoonbot_Openvla1/Mujoco/raccoon_grasp_multicolor_scene_dataset.py`
+
+  ### Add New Objects : cube 
+  - 기존 실린더 4색 + 큐브 1개 추가
+
+  ### Add New Task : Push
+  - 큐브를 집은 후 해당 위치부터 높이를 유지한 채 월드좌표계 기준으로 이동
+
+  ### Diverse Language Instructions
+  - sentence templates / prefix / verb / noun 을 랜덤으로 생성
+  -templates =  `["{prefix} {verb} the {noun}", "{prefix} {verb} the {noun} up", "{prefix} {verb} the {noun} for me","{prefix} {verb} the {color} {noun},"{prefix} {verb} the {color} {noun} up", "{prefix} {verb} the {color} {noun} for me"]` 형태로 다양화
+  - prefixes =  `["please", "can you", "carefully", "gently", ""] `
+  - verbs = ` ["grasp", "pick up", "grab", "catch", "take","push", "slide", "move"] `
+  - nouns = ` ["cylinder", "box", "cube", "block", "object", "target box"] `
+
+  - 예시 :  `please slide the box for me ` /  `carefully grasp the red cylinder `
+
+
+
+
+## 과제2 : 코드 개선
+
+  변경 폴더
+  `openvla_multicolor_client_real_robot.py.xml`
+  `/client/batch_rollout.sh`
+
+
+  ### 로봇 속도 개선
+  - 실물 로봇 동작 속도 개선 (동일seed 수행시간 비교결과 : 기존 5min46s->변경2min5s)
+  - 명령어 및 예시 결과
+
+```
+  python openvla_multicolor_client_real_robot.py   --server_url http://127.0.0.1:8001   --target_color green   --seed 42   --image_quality 30   --no_save_frames   --use_real_robot   --use_viewer
+[CLEANUP] removed 0 existing image files from rollout_outputs/episode_000001
+Raccoon[0] Connected: /dev/ttyACM0 D5:BF:DA:6B:6F:D6
+[REAL_ROBOT] 하드웨어 연결 성공
+[DEBUG] current ee from get_ee_pose = (0.00, 14.74, 9.44) cm
+[DEBUG] IK(current ee) = [-0.005280205391976754, -10.001870609331936, -140.00075796191655, 60.00262857124849]
+[SCENE] instruction='grasp the green cylinder' | target_color='green' | target_xy=(0.057, 0.172) | objects={'red': {'body_name': 'target_object', 'xy': [-0.054552255643044625, 0.20991263083142514], 'yaw': -0.6851542519228805}, 'blue': {'body_name': 'target_object_blue', 'xy': [-0.025840395153483756, 0.24340884899637416], 'yaw': 0.2259828021766146}, 'green': {'body_name': 'target_object_green', 'xy': [0.05721286105539078, 0.17153022694079914], 'yaw': -0.077933586511017}, 'yellow': {'body_name': 'target_object_yellow', 'xy': [0.07171958398227649, 0.22276312261534276], 'yaw': -0.6374647312682433}}
+[INFER] server request time: 0.411s | image_quality=30
+[REAL_ROBOT] target_cm=[0.5, 15.01, 9.36] | joint_deg=[-1.91, -11.81, -138.38, 60.19] | gripper=open
+[000] OK | final_delta=[0.005, 0.0028, -0.0006] | move=[0.005, 0.0028, -0.0006] | target=[0.005, 0.1501, 0.0936] | gripper=0.0 | retries=0
+[INFER] server request time: 0.328s | image_quality=30
+```
+
+
+  ### 로그 / 시각화
+
+  - client 내부에서 추론 결과 확인시 한번에 여러번 테스트 가능한 쉘 코드 추가
+
+  - 예시 결과
+
+```
+  ==========================================
+Batch Rollout & Advanced Condition Logging
+Target Episodes: 1
+Analysis Report: ./경로.csv
+==========================================
+
+[12:03:11] Episode 000001/1 시작...
+[✓ LIFT_SUCCESS] Color: red | Verb: grasp | Noun: cylinder | Goal: N/A
+          Result: 성공 | 누적성공률: 100% (1/1)
+
+==========================================
+        배치 롤아웃 조건별 최종 통계
+==========================================
+총 에피소드 수 : 1회
+총 성공 횟수   : 1회
+최종 전체 성공률: 100%
+
+TARGET COLOR 통계 리포트
+조건 이름             | 총 호출수     | 성공률
+------------------------------------------
+red                | 1          | 100%
+
+COMMAND VERB 통계 리포트
+조건 이름             | 총 호출수     | 성공률
+------------------------------------------
+grasp              | 1          | 100%
+
+OBJECT NOUN 통계 리포트
+조건 이름             | 총 호출수     | 성공률
+------------------------------------------
+cylinder           | 1          | 100%
+
+PUSH GOAL 통계 리포트
+조건 이름             | 총 호출수     | 성공률
+------------------------------------------
+==========================================
+결과 CSV 저장 완료: ./경로.csv
+==========================================
+```
+
+
+
+
+
+
+---
+
 # Raccoonbot_Openvla
 
 ⭐ 1~3번은 직접 finetuning을 진행하는 내용이니 체크포인트를 불러와서 사용하는 경우 0번과 4번만 진행<br>
