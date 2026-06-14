@@ -22,7 +22,7 @@
     <geom name="floor" size="0.5 0.5 0.05" type="plane" material="groundplane"/>
     <camera name="front_view" pos="0.0 0.50 0.13" xyaxes="-1 0 0 0 -0.18 0.98" fovy="45"/>
 
-    <!-- Red object: 기존 코드 호환을 위해 body name은 target_object 유지 -->
+    <!-- Red object -->
     <body name="target_object" pos="-0.12 0.15 0.02">
       <freejoint/>
       <inertial pos="0 0 0" mass="0.05" diaginertia="0.00000001 0.00000001 0.00000001"/>
@@ -59,6 +59,16 @@
       <geom name="geom_green" type="cylinder" size="0.0075 0.01"
         rgba="0 1 0 1"
         friction="1 1 1" condim="6"
+        solimp="0.99 0.99 0.001" solref="0.002 1"/>
+    </body>
+
+    <!-- Pushable box object -->
+    <body name="target_box" pos="0.00 0.12 0.02">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.08" diaginertia="0.00000002 0.00000002 0.00000002"/>
+      <geom name="geom_box" type="box" size="0.012 0.012 0.012"
+        rgba="0.85 0.55 0.20 1"
+        friction="1.2 1.2 1.2" condim="6"
         solimp="0.99 0.99 0.001" solref="0.002 1"/>
     </body>
 
